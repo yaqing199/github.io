@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>展会爆品扫雷 - 专业逻辑版</title>
+    <style>
+        :root {
+            --primary-color: #ff4757;
+            --safe-bg: #ffffff;
+            --cell-size: 55px;
+        }
+
+        body {
+            font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            background-color: #f7f1e3;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 0;
+            padding-top: 30px;
+        }
+
+        h1 { color: #d35400; margin-bottom: 5px; }
+        .desc { color: #7f8c8d; margin-bottom: 20px; }
+
+        /* 游戏区域 */
+        #game-container {
+            position: relative;
+            background: #bdc3c7;
+            padding: 10px;
+            border-radius: 10px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+        }
+
+        #grid {
+            display: grid;
+            grid-template-columns: repeat(8, var(--cell-size));
+            grid-gap: 2px;
+        }
+
+        .cell {
+            width: var(--cell-size);
+            height: var(--cell-size);
+            background: #ecf0f1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 18px;
+            cursor: pointer;
+            border-radius: 2px;
+            position: relative;
+            transition: background 0.2s;
+        }
+
+        .cell:hover:not(.revealed) { background: #d1ccc0; }
+        .cell.revealed {
+            background: var(--safe-bg);
+            cursor: default;
+        }
+
+        /* 数字颜色 */
+        .n-1 { color: #3498db; }
+        .n-2 { color: #2ecc71; }
+        .n-3 { color: #e74c3c; }
+        .n-4 { color: #9b59b6; }
+        .n-5 { color: #e67e22; }
+        .n-6 { color: #1abc9c; }
+
+        .heart { 
+            background: #ff7675 !important; 
+            font-size: 24px;
+            animation: heartPop 0.5s ease-out;
+        }
+        @keyframes heartPop {
+            0% { transform: scale(0); }
+            80% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+
+        /* 爆品弹窗 */
+        #product-modal {
+            display: none;
+            position: fixed;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 0 40px rgba(0,0,0,0.5);
+            text-align: center;
+            z-index: 2000;
+            width: 300px;
+        }
+        #product-modal img {
+            width: 100%;
+            max-height: 200px;
+            object-fit: contain;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+
+        /* 结束弹窗 */
+        #end-modal {
+            display: none;
+            position: fixed;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 0 40px rgba(0,0,0,0.5);
+            text-align: center;
+            z-index: 1000;
+            width: 280px;
+        }
+
+        button {
+            margin-top: 15px;
+            padding: 10px 30px;
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>🍷 爆品扫雷大作战 🍫</h1>
+    <p class="desc">排雷成功，解锁对应爆品！</p>
+
+    <div id="game-container">
+        <div id="grid"></div>
+    </div>
+
+    <!-- 用于展示单个爆品的弹窗 -->
+    <div id="product-modal">
+        <h3>排雷成功！发现爆品</h3>
+        <img id="product-modal-img" src="" alt="爆品">
+        <p id="product-modal-desc"></p>
+        <button onclick="closeProductModal()">继续游戏</button>
+    </div>
+
+    <!-- 游戏结束弹窗 -->
+    <div id="end-modal">
+        <h2 id="end-modal-title">游戏结束</h2>
+        <p id="end-modal-msg"></p>
+        <button onclick="initGame()">重新开始</button>
+    </div>
+
+    <script>
+        const rows = 8;
+        const cols = 8;
+        const heartCount = 7;
+        
+        // 【自定义爆品信息：每个雷对应一个爆品】
+        const productData = [
+            { 
+                imgUrl: "https://static.foodtalks.cn/image/post/39292636ab9ef3095f2aeb305fbd4aa858fa.png",
+                description: "新品A - 匠心酿造"
+            },
+            { 
+                imgUrl: "https://static.foodtalks.cn/image/post/d83bb69c3896860cf34acbe6283036f7.webp",
+                description: "热销B - 人气之选"
+            },
+            { 
+                imgUrl: "https://static.foodtalks.cn/image/post/428ead289d5134670e8b97ad32930901abc4.png",
+                description: "特饮C - 清爽体验"
+            },
+            { 
+                imgUrl: "https://mmbiz.qpic.cn/mmbiz_png/8XP6AJS4BwYiakF6PsuuOgpUiciblRqEicHXB2Gqmvf1HbhkwgZSWMvJC0ttZq8ORC5jqerrWR83V9QqlPDWCrE1tA/640?wx_fmt=png&from=appmsg",
+                description: "零食D - 美味享受"
+            },
+            { 
+                imgUrl: "https://static.foodtalks.cn/image/post/637725d5ea752564254abc3d35d27d7e4389.png",
+                description: "甜品E - 甜蜜诱惑"
+            },
+            { 
+                imgUrl: "https://static.foodtalks.cn/image/post/a7319cff7b303b46088a59cc0c08ff4d.jpg",
+                description: "零食 - 联名薯片"
+            },
+            { 
+                imgUrl: "https://static.foodtalks.cn/image/post/7a432b003d9c1ed03ab2e98e5e533a11.png",
+                description: "零食 - "
+            }
+        ];
+
+        let board = [];
+        let hearts = []; // 存储所有雷的信息
+        let gridElement = document.getElementById('grid');
+        let safeCellsRemaining = rows * cols - heartCount; // 剩余安全格计数
+
+        function initGame() {
+            gridElement.innerHTML = '';
+            board = [];
+            hearts = [];
+            safeCellsRemaining = rows * cols - heartCount;
+            document.getElementById('product-modal').style.display = 'none';
+            document.getElementById('end-modal').style.display = 'none';
+
+            // 1. 初始化空棋盘
+            for (let r = 0; r < rows; r++) {
+                board[r] = [];
+                for (let c = 0; c < cols; c++) {
+                    board[r][c] = { 
+                        isHeart: false, 
+                        revealed: false, 
+                        count: 0,
+                        heartId: null,
+                        safeForHearts: []
+                    };
+                }
+            }
+
+            // 2. 随机布雷，并初始化每个雷的数据结构
+            let productIndex = 0;
+            for (let i = 0; i < heartCount; i++) {
+                let placed = false;
+                while (!placed) {
+                    let r = Math.floor(Math.random() * rows);
+                    let c = Math.floor(Math.random() * cols);
+                    if (!board[r][c].isHeart) {
+                        board[r][c].isHeart = true;
+                        board[r][c].heartId = i;
+                        
+                        // 为此雷创建一个数据对象
+                        let heartObj = {
+                            id: i,
+                            r: r,
+                            c: c,
+                            product: productData[productIndex % productData.length],
+                            neighborSafeCells: [], // 存储周围8个安全格的坐标
+                            cleared: false
+                        };
+                        
+                        // 找出并记录此雷周围8格中的所有安全格
+                        for (let dr = -1; dr <= 1; dr++) {
+                            for (let dc = -1; dc <= 1; dc++) {
+                                if (dr === 0 && dc === 0) continue;
+                                let nr = r + dr;
+                                let nc = c + dc;
+                                if (nr >= 0 && nr < rows && nc >= 0 && nc < cols) {
+                                    // 记录这个安全格属于当前雷
+                                    board[nr][nc].safeForHearts.push(i);
+                                    // 如果这个邻格不是雷，则加入到雷的“待排查列表”
+                                    if (!board[nr][nc].isHeart) {
+                                        heartObj.neighborSafeCells.push({r: nr, c: nc});
+                                    }
+                                }
+                            }
+                        }
+                        
+                        hearts.push(heartObj);
+                        productIndex++;
+                        placed = true;
+                    }
+                }
+            }
+
+            // 3. 计算每个安全格周围的雷数
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    if (!board[r][c].isHeart) {
+                        board[r][c].count = countNeighbors(r, c);
+                    }
+                }
+            }
+
+            // 4. 渲染界面
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    const cell = document.createElement('div');
+                    cell.classList.add('cell');
+                    cell.dataset.r = r;
+                    cell.dataset.c = c;
+                    cell.addEventListener('click', () => revealCell(r, c, false));
+                    gridElement.appendChild(cell);
+                    board[r][c].element = cell;
+                }
+            }
+        }
+
+        function countNeighbors(r, c) {
+            let count = 0;
+            for (let i = -1; i <= 1; i++) {
+                for (let j = -1; j <= 1; j++) {
+                    let nr = r + i;
+                    let nc = c + j;
+                    if (nr >= 0 && nr < rows && nc >= 0 && nc < cols && board[nr][nc].isHeart) {
+                        count++;
+                    }
+                }
+            }
+            return count;
+        }
+
+        // ==========【核心修复部分：修改了函数签名和逻辑】==========
+        function revealCell(r, c, isRecursiveCall) {
+            let cellData = board[r][c];
+            if (cellData.revealed) return;
+
+            cellData.revealed = true;
+            cellData.element.classList.add('revealed');
+
+            if (cellData.isHeart) {
+                // 直接点中雷，游戏结束
+                cellData.element.innerHTML = '❤️';
+                cellData.element.classList.add('heart');
+                gameOver(false, '你被爱心击中啦！请重新开始吧~');
+            } else {
+                // 点中安全格
+                safeCellsRemaining--;
+                
+                // 显示数字
+                if (cellData.count > 0) {
+                    cellData.element.innerHTML = `<span class="number-text n-${cellData.count}">${cellData.count}</span>`;
+                } else {
+                    // 如果是数字0，自动展开一片（标记为递归调用）
+                    expandEmpty(r, c);
+                }
+
+                // 【关键修复】只在玩家主动点击（非递归展开）时，才触发最终的统一检查
+                if (!isRecursiveCall) {
+                    checkForNewlyClearedHearts();
+                }
+
+                // 检查是否游戏胜利
+                if (safeCellsRemaining === 0) {
+                    gameOver(true, '恭喜！所有爆品区域均已安全排查完毕！');
+                }
+            }
+        }
+
+        function expandEmpty(r, c) {
+            for (let i = -1; i <= 1; i++) {
+                for (let j = -1; j <= 1; j++) {
+                    let nr = r + i;
+                    let nc = c + j;
+                    if (nr >= 0 && nr < rows && nc >= 0 && nc < cols && !board[nr][nc].revealed) {
+                        if (!board[nr][nc].isHeart) {
+                            // 递归展开时，标记为 true
+                            revealCell(nr, nc, true);
+                        }
+                    }
+                }
+            }
+        }
+        // ==========【核心修复部分结束】==========
+
+        // ==========【新增：批量检查与处理函数】==========
+        function checkForNewlyClearedHearts() {
+            let newlyCleared = [];
+            
+            for (let heart of hearts) {
+                if (!heart.cleared && isHeartCleared(heart)) {
+                    heart.cleared = true;
+                    newlyCleared.push(heart);
+                }
+            }
+            
+            if (newlyCleared.length > 0) {
+                processClearedHearts(newlyCleared);
+            }
+        }
+        
+        function isHeartCleared(heart) {
+            for (let safeCell of heart.neighborSafeCells) {
+                if (!board[safeCell.r][safeCell.c].revealed) {
+                    return false;
+                }
+            }
+            return heart.neighborSafeCells.length > 0;
+        }
+        
+        function processClearedHearts(heartArray) {
+            for (let heart of heartArray) {
+                let heartCell = board[heart.r][heart.c];
+                heartCell.revealed = true;
+                heartCell.element.innerHTML = '❤️';
+                heartCell.element.classList.add('revealed', 'heart');
+            }
+            
+            showMultipleProductsModal(heartArray);
+        }
+        
+        function showMultipleProductsModal(heartArray) {
+            const modal = document.getElementById('product-modal');
+            
+            let title = heartArray.length === 1 ? 
+                '排雷成功！发现爆品' : 
+                `排雷成功！发现 ${heartArray.length} 个爆品`;
+            
+            let content = `<h3>${title}</h3>`;
+            
+            heartArray.forEach(heart => {
+                content += `
+                <div style="margin: 15px 0;">
+                    <img src="${heart.product.imgUrl}" alt="爆品" 
+                         style="width: 100%; max-height: 150px; object-fit: contain; border-radius: 8px;">
+                    <p style="margin: 8px 0;">${heart.product.description}</p>
+                </div>
+                `;
+            });
+            
+            content += `<button onclick="closeProductModal()">继续游戏</button>`;
+            
+            modal.innerHTML = content;
+            modal.style.display = 'block';
+        }
+        // ==========【新增函数结束】==========
+
+        function closeProductModal() {
+            document.getElementById('product-modal').style.display = 'none';
+        }
+
+        function gameOver(isWin, message) {
+            const modal = document.getElementById('end-modal');
+            modal.style.display = 'block';
+            document.getElementById('end-modal-title').innerText = isWin ? "🏆 挑战成功！" : "💥 游戏结束";
+            document.getElementById('end-modal-msg').innerText = message;
+        }
+
+        // 初始化游戏
+        initGame();
+    </script>
+</body>
+</html>
